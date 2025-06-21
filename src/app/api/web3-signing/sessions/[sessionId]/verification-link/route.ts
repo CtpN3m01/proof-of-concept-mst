@@ -5,7 +5,7 @@ const AUTOPEN_API_KEY = process.env.NEXT_PUBLIC_AUTOPEN_API_KEY;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  context: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     if (!AUTOPEN_BASE_URL || !AUTOPEN_API_KEY) {
@@ -15,6 +15,7 @@ export async function GET(
       );
     }
 
+    const params = await context.params;
     const sessionId = params.sessionId;
     
     const response = await fetch(`${AUTOPEN_BASE_URL}/api/web3-signing/sessions/${sessionId}/verification-link`, {
