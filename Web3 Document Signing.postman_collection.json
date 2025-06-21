@@ -1,0 +1,345 @@
+{
+	"info": {
+		"_postman_id": "c81d4e4a-d01a-437b-93d9-791c59fac3c1",
+		"name": "Web3 Document Signing",
+		"description": "This guide explains how to test the Web3 document signing system using Postman with real EIP-712 signatures.\n\n## Overview\n\nThe Web3 signing system allows users to sign PDF documents using their crypto wallets via EIP-712 signatures. The system automatically creates users for wallet addresses, generates P12 certificates, and provides cryptographically signed documents with public verification links.\n\n## Prerequisites\n\n1. **Postman** installed with collection import capability\n    \n2. **PDF file** to upload for signing\n    \n3. **Private key** corresponding to the wallet address you want to test with\n    \n\n## Collection Setup\n\n### 1\\. Import the Collection\n\nImport the provided Web3-Signing collection into Postman. The collection includes:\n\n- Automatic ethers.js library loading\n    \n- EIP-712 signature generation\n    \n- Session management variables\n    \n- Pre-configured requests\n    \n\n## Testing Workflow\n\n### Step 1: Create Signing Session\n\n**Request:** `Create Session`\n\n- **Method:** POST\n    \n- **URL:** `{{BASE_URL}}/api/web3-signing/sessions`\n    \n- **Body Type:** form-data\n    \n\n**Form Data:**\n\n- `sessionName`: `{{SESSION_NAME}}` (optional human-readable name)\n    \n- `expectedSigners`: `[{\"walletAddress\":\"0xYourWalletAddress\",\"role\":\"signer\"}]`\n    \n- `document`: \\[Upload your PDF file\\]\n    \n\n**Expected Response:**\n\n``` json\n{\n  \"sessionId\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n  \"status\": \"pending\",\n  \"documentHash\": \"0x15dce484d1586fad9c8996088aafde16e1c34df65b1f8faf861f98d08f9ae94b\",\n  \"signers\": [{\n    \"walletAddress\": \"0xYourWalletAddress\",\n    \"userId\": 123,\n    \"status\": \"pending_share\"\n  }]\n}\n\n ```\n\nThe collection automatically saves `sessionId` and `documentHash` for use in subsequent requests.\n\n### Step 2: Get EIP-712 Domain (Optional)\n\n**Request:** `EIP-712 Domain Structure`\n\n- **Method:** GET\n    \n- **URL:** `{{BASE_URL}}/api/web3-signing/eip712-domain`\n    \n\nThis returns the EIP-712 domain and types structure used for signing:\n\n``` json\n{\n  \"domain\": {\n    \"name\": \"DocumentSigningService\",\n    \"version\": \"1\",\n    \"chainId\": 1,\n    \"verifyingContract\": \"0x0000000000000000000000000000000000000000\"\n  },\n  \"types\": {\n    \"DocumentSignature\": [\n      {\"name\": \"sessionId\", \"type\": \"string\"},\n      {\"name\": \"walletAddress\", \"type\": \"string\"},\n      {\"name\": \"documentHash\", \"type\": \"bytes32\"},\n      {\"name\": \"timestamp\", \"type\": \"uint256\"}\n    ]\n  }\n}\n\n ```\n\n### Step 3: Submit EIP-712 Signature\n\n**Request:** `Sign`\n\n- **Method:** POST\n    \n- **URL:** `{{BASE_URL}}/api/web3-signing/sign`\n    \n- **Body Type:** raw JSON\n    \n\nThe pre-request script automatically:\n\n1. Loads the ethers.js library\n    \n2. Creates a wallet from your private key\n    \n3. Generates a real EIP-712 signature\n    \n4. Sets the request body with the signature\n    \n\n**Generated Request Body:**\n\n``` json\n{\n  \"sessionId\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n  \"eip712Signature\": {\n    \"signature\": \"0x1234567890abcdef...\",\n    \"message\": {\n      \"sessionId\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n      \"walletAddress\": \"0xYourWalletAddress\",\n      \"documentHash\": \"0x15dce484d1586fad9c8996088aafde16e1c34df65b1f8faf861f98d08f9ae94b\",\n      \"timestamp\": 1704067200\n    }\n  },\n  \"walletAddress\": \"0xYourWalletAddress\"\n}\n\n ```\n\n**Expected Response:**\n\n``` json\n{\n  \"success\": true,\n  \"sessionStatus\": \"complete\",\n  \"signatureApplied\": true,\n  \"remainingSigners\": [],\n  \"verificationUrl\": \"https://your-domain.replit.dev/public/verify/123\"\n}\n\n ```\n\n### Step 4: Get Verification Link\n\n**Request:** `Verification link`\n\n- **Method:** GET\n    \n- **URL:** `{{BASE_URL}}/api/web3-signing/sessions/{{sessionId}}/verification-link`\n    \n\n**Expected Response:**\n\n``` json\n{\n  \"sessionId\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n  \"signatureRequestId\": 123,\n  \"verificationLink\": \"https://your-domain.replit.dev/public/verify/123\",\n  \"status\": \"complete\",\n  \"completedSigners\": 1\n}\n\n ```\n\n## Key Features\n\n### Automatic User Creation\n\n- System automatically creates users for new wallet addresses\n    \n- Generates unique P12 certificates per wallet\n    \n- No manual user registration required\n    \n\n### Progressive Multi-Party Signing\n\n- Support for multiple signers on the same document\n    \n- Each signature updates the PDF for subsequent signers\n    \n- Proper signing order maintained\n    \n\n### Cryptographic Security\n\n- Real EIP-712 signatures for wallet authentication\n    \n- P12 certificate-based PDF signing\n    \n- Tamper-evident digital signatures\n    \n\n### Public Verification\n\n- Public verification links without authentication\n    \n- Cryptographic signature validation\n    \n- Document integrity verification\n    \n\n## Troubleshooting\n\n### Common Issues\n\n1. **\"Session not found\" error**\n    \n    - Ensure you're using the UUID returned from session creation\n        \n    - Check that the session was created successfully\n        \n2. **\"Invalid signature format\" error**\n    \n    - Verify your private key is correct\n        \n    - Ensure ethers.js loaded properly in the pre-script\n        \n3. **\"Document hash mismatch\" error**\n    \n    - The document may have been modified after session creation\n        \n    - Create a new session with the current document\n        \n4. **File upload issues**\n    \n    - Ensure PDF file is under 10MB\n        \n    - Verify file is a valid PDF format\n        \n\n### Debug Information\n\nThe collection includes extensive console logging. Check the Postman Console for:\n\n- Ethers.js loading status\n    \n- Wallet creation confirmation\n    \n- EIP-712 signature generation\n    \n- Local signature verification\n    \n\n### Testing with Different Wallets\n\nTo test multi-party signing:\n\n1. Create a session with multiple wallet addresses in `expectedSigners`\n    \n2. Change the private key in the Sign request for each wallet\n    \n3. Submit signatures in order\n    \n\n## Security Notes\n\n1. **Private Keys**: Never use production private keys in testing\n    \n2. **Test Networks**: Consider using testnet wallets for development\n    \n3. **Key Storage**: Don't commit private keys to version control\n    \n4. **Environment Variables**: Use Postman environment variables for sensitive data\n    \n\n## API Endpoints Reference\n\n| Endpoint | Method | Purpose |\n| --- | --- | --- |\n| `/api/web3-signing/sessions` | POST | Create signing session |\n| `/api/web3-signing/sign` | POST | Submit EIP-712 signature |\n| `/api/web3-signing/sessions/{id}/status` | GET | Get session status |\n| `/api/web3-signing/sessions/{id}/verification-link` | GET | Get verification link |\n| `/api/web3-signing/eip712-domain` | GET | Get EIP-712 domain structure |\n\n## Example Workflow Summary\n\n1. **Upload PDF** → Creates session with UUID\n    \n2. **Generate EIP-712 signature** → Authenticates wallet ownership\n    \n3. **System signs PDF** → Uses auto-generated P12 certificate\n    \n4. **Get verification link** → Public URL for signature verification\n    \n\nThis system bridges Web3 wallet authentication with traditional PDF signing, providing legally compliant digital signatures backed by blockchain technology.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "45748474",
+		"_collection_link": "https://www.postman.com/bold-meteor-943453/workspace/autopen-admin-api/collection/32694298-c81d4e4a-d01a-437b-93d9-791c59fac3c1?action=share&source=collection_link&creator=45748474"
+	},
+	"item": [
+		{
+			"name": "Create Session",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Parse the response JSON",
+							"const responseJson = pm.response.json();",
+							"pm.collectionVariables.set('documentHash', responseJson.documentHash);",
+							"pm.collectionVariables.set('sessionId', responseJson.sessionId);",
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "sessionId",
+							"value": "{{SESSION_NAME}}",
+							"type": "text"
+						},
+						{
+							"key": "expectedSigners",
+							"value": "[{\"walletAddress\":\"0xFCE57A15a9529A17C695AD2DdB4dA66Ceb4BFAFC\",\"role\":\"signer\"}]",
+							"type": "text"
+						},
+						{
+							"key": "document",
+							"type": "file",
+							"src": "postman-cloud:///1f03fb8e-35a3-4e80-9b69-bd382e1a425e"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/web3-signing/sessions",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"web3-signing",
+						"sessions"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Sign",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"const keepScriptAlive = setInterval(() => {}, 300000);",
+							"",
+							"try {",
+							"    // Get ethers code from collection variable",
+							"    const ethers_code = pm.collectionVariables.get('ethers_code');",
+							"    ",
+							"    if (!ethers_code) {",
+							"        console.log('❌ Ethers code not found in collection variables');",
+							"        console.log('❌ Run a request first to load ethers, then try again');",
+							"        clearInterval(keepScriptAlive);",
+							"        return;",
+							"    }",
+							"    ",
+							"    console.log('✅ Ethers code found, length:', ethers_code.length);",
+							"    ",
+							"",
+							"    // Load ethers library",
+							"    (new Function(ethers_code))();",
+							"    ",
+							"    if (typeof ethers === 'undefined') {",
+							"        console.log('❌ Ethers not available after loading');",
+							"        clearInterval(keepScriptAlive);",
+							"        return;",
+							"    }",
+							"    ",
+							"    console.log('✅ Ethers loaded successfully, version:', ethers.version);",
+							"    ",
+							"    // Create wallet",
+							"    const privateKey = '0x9ac0a2fbe88b843efda03e78f28f65079fe9452b41944d527baa7a4e5e4ba558';",
+							"    const wallet = new ethers.Wallet(privateKey);",
+							"    ",
+							"    console.log('✅ Wallet created, address:', wallet.address);",
+							"    ",
+							"    // EIP-712 Domain",
+							"    const domain = {",
+							"        name: 'DocumentSigningService',",
+							"        version: '1',",
+							"        chainId: 1,",
+							"        verifyingContract: '0x0000000000000000000000000000000000000000'",
+							"    };",
+							"    ",
+							"    // EIP-712 Types",
+							"    const types = {",
+							"        DocumentSignature: [",
+							"            { name: 'sessionId', type: 'string' },",
+							"            { name: 'walletAddress', type: 'string' },",
+							"            { name: 'documentHash', type: 'bytes32' },",
+							"            { name: 'timestamp', type: 'uint256' }",
+							"        ]",
+							"    };",
+							"    ",
+							"    // Message to sign",
+							"    const message = {",
+							"        sessionId: pm.collectionVariables.get('sessionId'),",
+							"        walletAddress: wallet.address,",
+							"        documentHash: pm.collectionVariables.get('documentHash'),",
+							"        timestamp: Math.floor(Date.now() / 1000)",
+							"    };",
+							"    ",
+							"    console.log('📝 Message to sign:', message);",
+							"    console.log('🔐 Starting EIP-712 signing...');",
+							"    ",
+							"    // Sign typed data using ethers",
+							"    wallet._signTypedData(domain, types, message).then((signature) => {",
+							"        console.log('🎉 SUCCESS! Real EIP-712 signature:', signature);",
+							"        console.log('📏 Signature length:', signature.length, '(should be 132)');",
+							"        ",
+							"        // Verify signature locally",
+							"        try {",
+							"            const recoveredAddress = ethers.utils.verifyTypedData(domain, types, message, signature);",
+							"            console.log('🔍 Signature verification - recovered address:', recoveredAddress);",
+							"            console.log('✅ Signature valid:', recoveredAddress.toLowerCase() === wallet.address.toLowerCase());",
+							"        } catch (verifyError) {",
+							"            console.log('⚠️ Could not verify signature locally:', verifyError.message);",
+							"        }",
+							"        ",
+							"        // Create request body",
+							"        const requestBody = {",
+							"            sessionId: message.sessionId,",
+							"            eip712Signature: {",
+							"                signature: signature,",
+							"                message: message",
+							"            },",
+							"            walletAddress: message.walletAddress",
+							"        };",
+							"        ",
+							"        // Set the request body in globals",
+							"        pm.globals.set('requestBody', JSON.stringify(requestBody));",
+							"        ",
+							"        console.log('✅ REAL EIP-712 SIGNATURE SET IN GLOBALS!');",
+							"        console.log('✅ Done!');",
+							"        ",
+							"        clearInterval(keepScriptAlive);",
+							"        ",
+							"    }).catch((error) => {",
+							"        console.log('❌ Error signing with ethers:', error);",
+							"        console.log('❌ Error message:', error.message);",
+							"        clearInterval(keepScriptAlive);",
+							"    });",
+							"    ",
+							"} catch (error) {",
+							"    console.log('❌ General error:', error);",
+							"    console.log('❌ Error message:', error.message);",
+							"    clearInterval(keepScriptAlive);",
+							"}"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{{requestBody}}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/web3-signing/sign",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"web3-signing",
+						"sign"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Verification link",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "{{BASE_URL}}/api/web3-signing/sessions/{{sessionId}}/verification-link",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"web3-signing",
+						"sessions",
+						"{{sessionId}}",
+						"verification-link"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Session Status",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/api/web3-signing/sessions/{{sessionId}}/status",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"web3-signing",
+						"sessions",
+						"{{sessionId}}",
+						"status"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Document",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{BASE_URL}}/api/web3-signing/sessions/{{sessionId}}/document",
+					"host": [
+						"{{BASE_URL}}"
+					],
+					"path": [
+						"api",
+						"web3-signing",
+						"sessions",
+						"{{sessionId}}",
+						"document"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "key",
+				"value": "X-API-Key",
+				"type": "string"
+			},
+			{
+				"key": "value",
+				"value": "{{vault:authorization-secret}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// Only load ethers if not already cached",
+					"if (!pm.collectionVariables.get(\"ethers_code\")) {",
+					"    pm.sendRequest(\"https://cdnjs.cloudflare.com/ajax/libs/ethers/5.3.0/ethers.umd.min.js\", (err, res) => {",
+					"        if (err) {",
+					"            console.log('❌ Failed to load ethers in collection pre-script:', err);",
+					"        } else {",
+					"            pm.collectionVariables.set(\"ethers_code\", res.text());",
+					"            console.log('✅ Ethers code cached in collection variables');",
+					"        }",
+					"    });",
+					"} else {",
+					"    console.log('✅ Ethers code already cached');",
+					"}",
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "ethers_code",
+			"value": ""
+		},
+		{
+			"key": "documentHash",
+			"value": ""
+		},
+		{
+			"key": "sessionId",
+			"value": ""
+		}
+	]
+}
