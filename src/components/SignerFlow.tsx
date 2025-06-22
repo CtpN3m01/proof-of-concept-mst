@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ConnectButton, useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
-import { client } from '@/lib/client';
+import { walletManager, UserWallet } from '@/lib/wallet-manager';
 import { web3SigningClient } from '@/lib/web3-signing-client';
 import { checkEnvironmentVariables } from '@/lib/env-check';
 import DiagnosticPanel from './DiagnosticPanel';
@@ -15,8 +14,8 @@ type SessionState = {
 };
 
 export default function SignerFlow() {
-  const account = useActiveAccount();
-  const activeChain = useActiveWalletChain();
+  const [currentWallet, setCurrentWallet] = useState<UserWallet | null>(null);
+  const [userId, setUserId] = useState<string>('');
   const [session, setSession] = useState<SessionState | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(false);
@@ -27,11 +26,43 @@ export default function SignerFlow() {
     // Check environment variables on component mount
     const isEnvOk = checkEnvironmentVariables();
     setEnvCheck(isEnvOk);
+    
+    // Check if there's already a logged in user
+    const existingWallet = walletManager.getCurrentWallet();
+    const existingUserId = walletManager.getCurrentUserId();
+    if (existingWallet && existingUserId) {
+      setCurrentWallet(existingWallet);
+      setUserId(existingUserId);
+    }
   }, []);
-  /* 1. Crear sesión y subir PDF */
+
+  /* Función para hacer "login" con UserID */
+  function handleLogin() {
+    if (!userId.trim()) {
+      alert('Por favor ingresa un UserID');
+      return;
+    }
+
+    try {
+      const wallet = walletManager.loginWithUserId(userId);
+      setCurrentWallet(wallet);
+      alert(`✅ Usuario logeado exitosamente!\nWallet: ${wallet.address}`);
+    } catch (error) {
+      console.error('Error en login:', error);
+      alert('Error al crear la wallet. Inténtalo de nuevo.');
+    }
+  }
+
+  /* Función para logout */
+  function handleLogout() {
+    walletManager.logout();
+    setCurrentWallet(null);
+    setUserId('');
+    setSession(null);
+  }  /* 1. Crear sesión y subir PDF */
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !account) return;
+    if (!file || !currentWallet) return;
 
     setUploadProgress(true);
     try {
@@ -39,7 +70,7 @@ export default function SignerFlow() {
       
       const data = await web3SigningClient.createSession(
         file,
-        account.address,
+        currentWallet.address,
         'lease_contract_demo_ui'
       );
       setSession({ 
@@ -79,13 +110,13 @@ export default function SignerFlow() {
 
   /* 2. Pedir firma al usuario y enviarla */
   async function signAndSend() {
-    if (!session || !account) return;
+    if (!session || !currentWallet) return;
 
     setSignProgress(true);
     setBusy(true);
-      try {
-      /* Obtener chainId de la wallet conectada */
-      const chainId = activeChain?.id || 1; // Default a Ethereum mainnet si no se detecta
+    try {
+      /* Usar chainId por defecto (Ethereum mainnet) */
+      const chainId = 1;
       console.log('🔗 Using chainId:', chainId);
       
       /* Obtener dominio y tipos desde backend con chainId dinámico */
@@ -93,7 +124,7 @@ export default function SignerFlow() {
 
       const message = {
         sessionId: session.id,
-        walletAddress: account.address,
+        walletAddress: currentWallet.address,
         documentHash: session.hash,
         timestamp: Math.floor(Date.now() / 1000),
       };
@@ -101,25 +132,22 @@ export default function SignerFlow() {
       console.log('📝 Signing with domain:', domain);
       console.log('📝 Signing message:', message);
 
-      const signature = await account.signTypedData({ 
-        domain, 
-        types, 
-        primaryType: 'DocumentSignature', 
-        message 
-      });
+      const signature = await walletManager.signTypedData(domain, types, message);
 
       const result = await web3SigningClient.submitSignature(
         session.id,
         signature,
         message,
-        account.address
+        currentWallet.address
       );
 
       setSession(prev => prev ? {
         ...prev,
         status: result.sessionStatus,
         verificationUrl: result.verificationUrl
-      } : null);      alert('✅ Firma enviada exitosamente. El documento está siendo procesado.');
+      } : null);      
+      
+      alert('✅ Firma enviada exitosamente. El documento está siendo procesado.');
     } catch (error: unknown) {
       console.error('❌ Error signing document:', error);
       
@@ -139,16 +167,6 @@ export default function SignerFlow() {
           errorMessage = '❌ Error en la firma: Verifica que el documento y la wallet sean correctos';
         } else if (axiosError.response?.data?.message) {
           errorMessage = `❌ ${axiosError.response.data.message}`;
-        }
-      }
-        // Check for chainId mismatch errors
-      if (error && typeof error === 'object' && 'code' in error) {
-        const web3Error = error as { code?: number; message?: string };
-        if (web3Error.code === -32603 && web3Error.message?.includes('chainId')) {
-          const currentChain = activeChain?.id || 'unknown';
-          errorMessage = `❌ Error de ChainId: Tu wallet está en la red ${currentChain}. El documento requiere una red específica.`;
-        } else if (web3Error.code) {
-          errorMessage = `❌ Error de wallet (${web3Error.code}): ${web3Error.message || 'Error desconocido'}`;
         }
       }
       
@@ -224,31 +242,57 @@ export default function SignerFlow() {
           Firma de Documentos Web3
         </h1>
         <p className="text-gray-600">
-          Conecta tu wallet, sube un PDF y fírmalo de forma segura usando blockchain
+          Ingresa tu UserID para generar una wallet y firmar documentos de forma segura
         </p>
       </div>      
-      {/* Wallet Connection */}
+      
+      {/* User Login */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">1. Conectar Wallet</h2>
-        <ConnectButton client={client} />
-          {account && (
-          <div className="mt-4 space-y-2">
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-800">
-                ✅ Conectado: <span className="font-mono">{account.address}</span>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">1. Iniciar Sesión</h2>
+        
+        {!currentWallet ? (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="userId" className="block text-sm font-medium text-gray-700 mb-2">
+                Ingresa tu UserID
+              </label>
+              <input
+                id="userId"
+                type="text"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                placeholder="Ej: 1234, user123, etc."
+                className="w-full px-3 py-2 border text-black border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <button
+              onClick={handleLogin}
+              disabled={!userId.trim()}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              🔐 Generar Wallet
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 font-medium">
+                ✅ Usuario: <span className="font-mono">{walletManager.getCurrentUserId()}</span>
+              </p>
+              <p className="text-sm text-green-800 mt-1">
+                🔗 Wallet: <span className="font-mono text-xs">{currentWallet.address}</span>
               </p>
             </div>
-            {activeChain && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  🌐 Red: <span className="font-medium">{activeChain.name || `Chain ${activeChain.id}`}</span>
-                  <span className="ml-2 text-xs font-mono">ID: {activeChain.id}</span>
-                </p>
-              </div>
-            )}
+            <button
+              onClick={handleLogout}
+              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              👋 Cerrar Sesión
+            </button>
           </div>
         )}
-      </div>      
+      </div>
+      
       {/* File Upload */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">2. Subir Documento PDF</h2>
@@ -259,7 +303,7 @@ export default function SignerFlow() {
             accept="application/pdf" 
             onChange={handleFile} 
             className="hidden" 
-            disabled={!account || uploadProgress}
+            disabled={!currentWallet || uploadProgress}
           />
           
           <div className="space-y-2">
@@ -287,12 +331,13 @@ export default function SignerFlow() {
           </div>
         )}
       </div>      
+      
       {/* Signing */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">3. Firmar Documento</h2>
-          <button
+        <button
           onClick={signAndSend}
-          disabled={!session || !account || busy || signProgress}
+          disabled={!session || !currentWallet || busy || signProgress}
           className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium py-3 px-6 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
         >
           {signProgress ? (
