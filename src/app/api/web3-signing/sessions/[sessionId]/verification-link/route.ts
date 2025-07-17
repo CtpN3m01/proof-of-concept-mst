@@ -1,47 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const AUTOPEN_BASE_URL = process.env.NEXT_PUBLIC_AUTOPEN_BASE_URL;
-const AUTOPEN_API_KEY = process.env.NEXT_PUBLIC_AUTOPEN_API_KEY;
+import { Web3SigningContainer } from '../../../../../../infrastructure/di/web3-signing.container';
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    if (!AUTOPEN_BASE_URL || !AUTOPEN_API_KEY) {
-      return NextResponse.json(
-        { error: 'Server configuration missing' },
-        { status: 500 }
-      );
-    }
-
+    console.log('=== GET /api/web3-signing/sessions/[sessionId]/verification-link ===');
+    
+    const signingService = Web3SigningContainer.getSigningService();
     const params = await context.params;
     const sessionId = params.sessionId;
     
-    const response = await fetch(`${AUTOPEN_BASE_URL}/api/web3-signing/sessions/${sessionId}/verification-link`, {
-      method: 'GET',
-      headers: {
-        'X-API-Key': AUTOPEN_API_KEY,
-        'Content-Type': 'application/json',
-      },
+    console.log('Getting verification link for session:', sessionId);
+    
+    const verificationLink = await signingService.getVerificationLink(sessionId);
+    
+    console.log('Verification link retrieved:', verificationLink);
+    
+    return NextResponse.json({
+      sessionId,
+      verificationLink
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AutoPen API Error:', response.status, errorText);
-      return NextResponse.json(
-        { error: `API Error: ${response.status}` },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-    return NextResponse.json(data);
     
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error('Error in GET verification-link:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Failed to get verification link',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

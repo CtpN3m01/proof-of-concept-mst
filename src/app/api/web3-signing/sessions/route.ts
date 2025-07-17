@@ -1,43 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const AUTOPEN_BASE_URL = process.env.NEXT_PUBLIC_AUTOPEN_BASE_URL;
-const AUTOPEN_API_KEY = process.env.NEXT_PUBLIC_AUTOPEN_API_KEY;
+import { Web3SigningContainer } from '../../../../infrastructure/di/web3-signing.container';
+import { SigningRequest } from '../../../../domain/model/web3-signing';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!AUTOPEN_BASE_URL || !AUTOPEN_API_KEY) {
-      return NextResponse.json(
-        { error: 'Server configuration missing' },
-        { status: 500 }
-      );
-    }
-
+    console.log('=== POST /api/web3-signing/sessions ===');
+    
+    const signingService = Web3SigningContainer.getSigningService();
     const formData = await request.formData();
     
-    const response = await fetch(`${AUTOPEN_BASE_URL}/api/web3-signing/sessions`, {
-      method: 'POST',
-      headers: {
-        'X-API-Key': AUTOPEN_API_KEY,
-      },
-      body: formData,
+    // Extraer datos del FormData
+    const document = formData.get('document') as File;
+    const signerAddress = formData.get('signerAddress') as string;
+    const userID = formData.get('userID') as string;
+    const message = formData.get('message') as string;
+
+    console.log('Request data:', {
+      hasDocument: !!document,
+      documentName: document?.name,
+      documentSize: document?.size,
+      signerAddress,
+      userID,
+      message
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AutoPen API Error:', response.status, errorText);
+    if (!document || !signerAddress || !userID) {
       return NextResponse.json(
-        { error: `API Error: ${response.status}` },
-        { status: response.status }
+        { error: 'Missing required fields: document, signerAddress, userID' },
+        { status: 400 }
       );
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    // Crear la request usando el servicio
+    const signingRequest: SigningRequest = {
+      document,
+      signerAddress,
+      userID,
+      message: message || 'Document signing request'
+    };
+
+    const session = await signingService.createSigningSession(signingRequest);
     
+    console.log('Session created successfully:', session.sessionId);
+    
+    return NextResponse.json({
+      sessionId: session.sessionId,
+      documentHash: session.documentHash,
+      timestamp: session.timestamp,
+      status: session.status
+    });
+
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error('Error in POST /api/web3-signing/sessions:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Failed to create signing session',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

@@ -1,44 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const AUTOPEN_BASE_URL = process.env.NEXT_PUBLIC_AUTOPEN_BASE_URL;
-const AUTOPEN_API_KEY = process.env.NEXT_PUBLIC_AUTOPEN_API_KEY;
+import { Web3SigningContainer } from '../../../../infrastructure/di/web3-signing.container';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!AUTOPEN_BASE_URL || !AUTOPEN_API_KEY) {
-      return NextResponse.json(
-        { error: 'Server configuration missing' },
-        { status: 500 }
-      );
-    }
-
+    console.log('=== POST /api/web3-signing/sign ===');
+    
+    const signingService = Web3SigningContainer.getSigningService();
     const body = await request.json();
     
-    const response = await fetch(`${AUTOPEN_BASE_URL}/api/web3-signing/sign`, {
-      method: 'POST',
-      headers: {
-        'X-API-Key': AUTOPEN_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    const { sessionId, signature } = body;
+    
+    console.log('Sign request:', { sessionId, hasSignature: !!signature });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AutoPen API Error:', response.status, errorText);
+    if (!sessionId || !signature) {
       return NextResponse.json(
-        { error: `API Error: ${response.status}` },
-        { status: response.status }
+        { error: 'Missing required fields: sessionId, signature' },
+        { status: 400 }
       );
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    const result = await signingService.signDocument(sessionId, signature);
+    
+    console.log('Document signed successfully:', result.sessionId);
+    
+    return NextResponse.json({
+      sessionId: result.sessionId,
+      signature: result.signature,
+      verificationLink: result.verificationLink,
+      signedDocumentUrl: result.signedDocumentUrl,
+      status: result.status
+    });
     
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error('Error in POST /api/web3-signing/sign:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Failed to sign document',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

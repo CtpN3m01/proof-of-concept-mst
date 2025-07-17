@@ -10,12 +10,20 @@ export default function Home() {
           <h1 className="text-xl font-bold text-gray-900">
             Web3 Document Signing
           </h1>
-          <Link 
-            href="/verify"
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Verificar Documento
-          </Link>
+          <div className="flex space-x-4">
+            <Link 
+              href="/test"
+              className="text-green-600 hover:text-green-800 font-medium"
+            >
+              Generar URL Externa
+            </Link>
+            <Link 
+              href="/verify"
+              className="text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Verificar Documento
+            </Link>
+          </div>
         </div>
       </nav>
 
